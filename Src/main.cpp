@@ -337,11 +337,11 @@ int main(void)
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
       irBytes[0] = 0x01;
-      irBytes[1] = 0xE2;
-      irBytes[2] = 0xAE;
-      irBytes[3] = 0x21;
-      irBytes[4] = 0x13;
-      irBytes[5] = 0x11;
+      irBytes[1] = 0x02;
+      irBytes[2] = 0xFF;
+      irBytes[3] = 0x01;
+      irBytes[4] = 0x90;  //Temp upper nibble + 16
+      irBytes[5] = 0x19;
       irBytes[6] = 0xF0;
       irLen = 7;
   }
@@ -384,8 +384,8 @@ void setNextState()
 }
 
 #define ON_TIME       1430
-#define ONE_OFF_TIME  3333
-#define ZERO_OFF_TIME 980
+#define ONE_OFF_TIME  3320
+#define ZERO_OFF_TIME 1000
 
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -405,7 +405,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 		{
 			flag = 0;
 			setIR();
-			htim->Instance->ARR = 7143; //3ms on
+			htim->Instance->ARR = 7130; //3ms on
 		}
 		else
 		{
@@ -812,9 +812,9 @@ static void MX_TIM4_Init(void)
 	TIM_OC_InitTypeDef sConfigOC;
 
 	htim4.Instance = TIM4;
-	htim4.Init.Prescaler = 3; //input clock is 5kHz (36 000 000 / 7 200)
+	htim4.Init.Prescaler = 3; //input clock is 12MHz (36 000 000 / 3)
 	htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim4.Init.Period = 230;//236;   // trigger every 250 cycles, gives 4kHz (25ms) tick
+	htim4.Init.Period = 236;//236 = 38kHz  230=39kHz
 	htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV4;
 	htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
 	if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
