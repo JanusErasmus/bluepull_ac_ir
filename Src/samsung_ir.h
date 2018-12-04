@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-void samsung_ir_init(TIM_HandleTypeDef *htim);
+void samsung_ir_init(TIM_HandleTypeDef *htim, uint32_t channel);
 int samsung_ir_send(uint8_t *bytes, int len);
 void samsung_ir_service(TIM_HandleTypeDef *htim);
 

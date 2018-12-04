@@ -667,6 +667,7 @@ static void MX_TIM2_Init(void)
 
 
 	HAL_TIM_Base_Start(&htim2);
+	samsung_ir_init(&htim2, TIM_CHANNEL_1);
 
 	printf("TIM2 Init\n");
 

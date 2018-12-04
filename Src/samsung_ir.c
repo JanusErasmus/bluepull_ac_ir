@@ -33,10 +33,12 @@ static int irBit = 8;
 static uint8_t irBytes[BUFFER_SIZE];
 static int irLen = 0;
 static TIM_HandleTypeDef *tim_handle = 0;
+static uint32_t tim_channel = 0;
 
-void samsung_ir_init(TIM_HandleTypeDef *htim)
+void samsung_ir_init(TIM_HandleTypeDef *htim, uint32_t channel)
 {
 	tim_handle = htim;
+	tim_channel = channel;
 }
 
 int samsung_ir_send(uint8_t *bytes, int len)
@@ -54,8 +56,10 @@ int samsung_ir_send(uint8_t *bytes, int len)
     memcpy(irBytes, bytes, len);
     irLen = len;
 
-if(tim_handle)
-	HAL_TIM_OC_Start_IT(tim_handle, TIM_CHANNEL_1);
+    if(tim_handle)
+    {
+    	HAL_TIM_OC_Start_IT(tim_handle, tim_channel);
+    }
 
     return len;
 }
@@ -108,8 +112,8 @@ void samsung_ir_service(TIM_HandleTypeDef *htim)
 	{
 	default:
 	case IDLE:
-		if((irLen == 0) && tim_handle)
-			HAL_TIM_OC_Stop_IT(tim_handle, TIM_CHANNEL_1);
+		if((irLen <= 0) && tim_handle)
+			HAL_TIM_OC_Stop_IT(tim_handle, tim_channel);
 
 		if(irLen > 0)
 		{
