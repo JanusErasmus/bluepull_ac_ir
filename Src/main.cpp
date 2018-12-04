@@ -60,6 +60,8 @@
 #include "usb_device.h"
 
 #include "interface_nrf24.h"
+#include "samsung_ir.h"
+#include "samsung_ir_cmd.h"
 
 uint8_t netAddress[] = {0x03, 0x44, 0x55};
 #define payload_length 16
@@ -177,9 +179,6 @@ void report(uint8_t *address)
 	pay.timestamp = HAL_GetTick();
 	pay.temperature = temperature;
 
-	if(HAL_GPIO_ReadPin(MAINS_GPIO_Port, MAINS_Pin))
-		pay.inputs = 1;
-
 	pay.voltages[0] = volt;
 	pay.voltages[1] = (32768 + amp);
 	int result = -3;
@@ -242,30 +241,6 @@ bool NRFreceivedCB(int pipe, uint8_t *data, int len)
 	return false;
 }
 
-
-void setIR()
-{
-	GPIO_InitTypeDef GPIO_InitStruct;
-	GPIO_InitStruct.Pin = GPIO_PIN_9;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-}
-
-void resetIR()
-{
-	GPIO_InitTypeDef GPIO_InitStruct;
-	GPIO_InitStruct.Pin = GPIO_PIN_9;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-}
-
-static int irBytes[8];
-static int irLen = 0;
-
 int main(void)
 {
   /* MCU Configuration----------------------------------------------------------*/
@@ -327,144 +302,43 @@ int main(void)
   printf(" - APB1 %dHz\n", (int)HAL_RCC_GetPCLK2Freq());
   MX_RTC_Init();
 
+
+
   /* Infinite loop */
   while (1)
   {
 	  terminal_run();
 //	  InterfaceNRF24::get()->run();
 
-      HAL_Delay(1000);
+      HAL_Delay(5000);
       HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 
-      irBytes[0] = 0x01;
-      irBytes[1] = 0x02;
-      irBytes[2] = 0xFF;
-      irBytes[3] = 0x01;
-      irBytes[4] = 0x90;  //Temp upper nibble + 16
-      irBytes[5] = 0x19;
-      irBytes[6] = 0xF0;
-      irLen = 7;
+      static uint8_t flag = 0;
+      switch(flag)
+      {
+      default:
+      case 0:
+    	  samsung_ir_setFanLow();
+    	  break;
+      case 1:
+    	  samsung_ir_setFanMed();
+    	  break;
+      case 2:
+    	  samsung_ir_setFanHigh();
+    	  flag = 255;
+    	  break;
+      }
+      flag++;
   }
 
 }
 
-typedef enum
-{
-	IDLE,
-	START,
-	DATA_ONE,
-	DATA_ZERO,
-	STOP
-}eIRstate;
-static eIRstate irState = IDLE;
-static int flag = 0;
-static int irIndex = 0;
-static int irBit = 8;
 
-void setNextState()
-{
-	if(irLen == 0)
-	{
-		irState = STOP;
-		return;
-	}
-
-	if(irBytes[irIndex] & (1 << (8 - irBit)))
-		irState = DATA_ONE;
-	else
-		irState = DATA_ZERO;
-
-	irBit--;
-	if(irBit == 0)
-	{
-		irBit = 8;
-		irIndex++;
-		irLen--;
-	}
-}
-
-#define ON_TIME       1430
-#define ONE_OFF_TIME  3320
-#define ZERO_OFF_TIME 1000
 
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	switch(irState)
-	{
-	default:
-	case IDLE:
-		if(irLen > 0)
-		{
-			irIndex = 0;
-			irBit = 8;
-			irState = START;
-		}
-		break;
-	case START:
-		if(flag)
-		{
-			flag = 0;
-			setIR();
-			htim->Instance->ARR = 7130; //3ms on
-		}
-		else
-		{
-			flag = 1;
-			resetIR();
-			htim->Instance->ARR = 20500; //8.8ms off
-
-			setNextState();
-		}
-		break;
-	case DATA_ONE:
-		if(flag)
-		{
-			flag = 0;
-			setIR();
-			htim->Instance->ARR = ON_TIME; //0.6ms on
-		}
-		else
-		{
-			flag = 1;
-			resetIR();
-			htim->Instance->ARR = ONE_OFF_TIME;  //1.4ms off
-
-			setNextState();
-		}
-		break;
-	case DATA_ZERO:
-		if(flag)
-		{
-			flag = 0;
-			setIR();
-			htim->Instance->ARR = ON_TIME; //0.6ms on
-		}
-		else
-		{
-			flag = 1;
-			resetIR();
-			htim->Instance->ARR = ZERO_OFF_TIME;  //0.4ms off
-
-			setNextState();
-		}
-		break;
-	case STOP:
-		if(flag)
-		{
-			flag = 0;
-			setIR();
-			htim->Instance->ARR = ON_TIME; //0.6ms on
-		}
-		else
-		{
-			flag = 1;
-			resetIR();
-			irState = IDLE;
-			htim->Instance->ARR = 952;  //0.4ms off
-
-		}
-		break;
-	}
+	if(htim == &htim2)
+		samsung_ir_service(htim);
 }
 
 /** System Clock Configuration
@@ -634,7 +508,6 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pull = GPIO_PULLUP;
 	HAL_GPIO_Init(NRF_IRQ_GPIO_Port, &GPIO_InitStruct);
 
-
 	/*Configure GPIO pin : ADC12_IN0 */
 	GPIO_InitStruct.Pin = GPIO_PIN_0;
 	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
@@ -646,13 +519,6 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
 	GPIO_InitStruct.Pull = GPIO_PULLDOWN;
 	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : MAINS_Pin */
-	GPIO_InitStruct.Pin = MAINS_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-	HAL_GPIO_Init(MAINS_GPIO_Port, &GPIO_InitStruct);
-
 }
 
 /* SPI1 init function */
@@ -728,7 +594,13 @@ static void MX_ADC1_Init(void)
   //printf("%08X\n", ADC1->SQR1);
 }
 
-/* TIM2 init function */
+/* TIM2 init function
+ * This will setup timer 2 to interrupt,
+ * Timer 2 channel 1 interrupt drives the IR state machine
+ * Call the IR state machine in the Overflow Callback of the timer
+ * The IR state machine will change the timer capture value according
+ *  to what byte has to be sent.
+ * */
 static void MX_TIM2_Init(void)
 {
 	__HAL_RCC_TIM2_CLK_ENABLE();
@@ -795,13 +667,15 @@ static void MX_TIM2_Init(void)
 
 
 	HAL_TIM_Base_Start(&htim2);
-	HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_1);
 
 	printf("TIM2 Init\n");
 
 }
 
-/* TIM4 init function */
+/* TIM4 init function
+ * This function starts timer 4 and should output a 38kHz signal on
+ *  channel 4, or any configured output capture pin.
+ *  The IR state machine will enable / disable the pin accordingly*/
 static void MX_TIM4_Init(void)
 {
 	__HAL_RCC_TIM4_CLK_ENABLE();
@@ -870,12 +744,12 @@ static void MX_TIM4_Init(void)
 
 	///setup output pin
 	GPIO_InitTypeDef GPIO_InitStruct;
-	GPIO_InitStruct.Pin = GPIO_PIN_9;
+	GPIO_InitStruct.Pin = IR_CCO_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
+	HAL_GPIO_Init(IR_CCO_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_WritePin(IR_CCO_GPIO_Port, IR_CCO_Pin, GPIO_PIN_RESET);
 
 
 	HAL_TIM_Base_Start(&htim4);
