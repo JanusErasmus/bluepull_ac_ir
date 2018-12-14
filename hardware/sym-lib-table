@@ -1,0 +1,4 @@
+(sym_lib_table
+  (lib (name bluepill_ups-rescue)(type Legacy)(uri ${KIPRJMOD}/bluepill_ups-rescue.lib)(options "")(descr ""))
+  (lib (name bluepill_fermenter-rescue)(type Legacy)(uri ${KIPRJMOD}/bluepill_fermenter-rescue.lib)(options "")(descr ""))
+)
