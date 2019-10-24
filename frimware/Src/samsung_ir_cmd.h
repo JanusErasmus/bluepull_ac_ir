@@ -13,9 +13,8 @@
 extern "C" {
 #endif
 
-void samsung_ir_setFanHigh();
-void samsung_ir_setFanMed();
-void samsung_ir_setFanLow();
+void samsung_ir_setFan(uint8_t speed);
+void samsung_ir_setAC(uint8_t temp);
 
 
 #ifdef __cplusplus

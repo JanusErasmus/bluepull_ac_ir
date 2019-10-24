@@ -7,23 +7,51 @@
 
 #include "samsung_ir.h"
 
-//  uint8_t cmd[] = {0x01, 0x02, 0xFF, 0x01, 0x80, 0x19, 0xF0}; //ac25auto
-uint8_t fanLow[]  = {0x01, 0xE2, 0xFE, 0x01, 0x90, 0x35, 0xF0}; //fanLow
-uint8_t fanMed[]  = {0x01, 0xE2, 0xFE, 0x01, 0x90, 0x39, 0xF0}; //fanMed
-uint8_t fanHigh[] = {0x01, 0xD2, 0xFE, 0x01, 0x90, 0x3B, 0xF0}; //fanHigh
+static const uint8_t fanLow[]  = {0x7F, 0xB0, 0x80, 0x7F, 0xFE, 0x53, 0xF0};
+static const uint8_t fanMed[]  = {0x7F, 0xB0, 0x80, 0x7F, 0xFE, 0x63, 0xF0};
+static const uint8_t fanHigh[] = {0x7F, 0xB8, 0x80, 0x7F, 0xFE, 0x23, 0xF0};
+static const uint8_t ac24[]    = {0x7F, 0xB7, 0x00, 0x7F, 0xFE, 0x77, 0xF0};
+static const uint8_t ac25[]    = {0x7F, 0xBF, 0x00, 0x7F, 0xF6, 0x77, 0xF0};
+static const uint8_t ac26[]    = {0x7F, 0xBF, 0x00, 0x7F, 0xFA, 0x77, 0xF0};
+static const uint8_t off[]     = {0x7F, 0xBB, 0x00, 0x7F, 0xFD, 0x67, 0xFC};
 
 
-void samsung_ir_setFanHigh()
+void samsung_ir_setFan(uint8_t speed)
 {
-	samsung_ir_send(fanHigh, 7);
+	switch(speed)
+	{
+	default:
+	case 0:
+		samsung_ir_send(off, 7);
+		return;
+	case 1:
+		samsung_ir_send(fanLow, 7);
+		return;
+	case 2:
+		samsung_ir_send(fanMed, 7);
+		return;
+	case 3:
+		samsung_ir_send(fanHigh, 7);
+		return;
+	}
 }
 
-void samsung_ir_setFanMed()
+void samsung_ir_setAC(uint8_t temp)
 {
-	samsung_ir_send(fanMed, 7);
-}
-
-void samsung_ir_setFanLow()
-{
-	samsung_ir_send(fanLow, 7);
+	switch(temp)
+	{
+	default:
+	case 0:
+		samsung_ir_send(off, 7);
+		break;
+	case 24:
+		samsung_ir_send(ac24, 7);
+		return;
+	case 25:
+		samsung_ir_send(ac25, 7);
+		return;
+	case 26:
+		samsung_ir_send(ac26, 7);
+		return;
+	}
 }

@@ -252,6 +252,15 @@ HAL_StatusTypeDef HAL_RTC_Init(RTC_HandleTypeDef *hrtc)
   assert_param(IS_RTC_ALL_INSTANCE(hrtc->Instance));
   assert_param(IS_RTC_CALIB_OUTPUT(hrtc->Init.OutPut));
   assert_param(IS_RTC_ASYNCH_PREDIV(hrtc->Init.AsynchPrediv));
+
+  if(hrtc->State == HAL_RTC_STATE_RESET)
+  {
+    /* Allocate lock resource and initialize it */
+    hrtc->Lock = HAL_UNLOCKED;
+
+    /* Initialize RTC MSP */
+    HAL_RTC_MspInit(hrtc);
+  }
     
   if(HAL_RTCEx_BKUPRead(hrtc, RTC_BKP_DR1) == 0x32F2)
   {
@@ -265,14 +274,7 @@ HAL_StatusTypeDef HAL_RTC_Init(RTC_HandleTypeDef *hrtc)
   	return HAL_OK;
   }
 
-  if(hrtc->State == HAL_RTC_STATE_RESET)
-  {
-    /* Allocate lock resource and initialize it */
-    hrtc->Lock = HAL_UNLOCKED;
-    
-    /* Initialize RTC MSP */
-    HAL_RTC_MspInit(hrtc);
-  }
+
   
   /* Set RTC state */  
   hrtc->State = HAL_RTC_STATE_BUSY;  

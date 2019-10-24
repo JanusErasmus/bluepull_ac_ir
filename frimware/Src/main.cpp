@@ -59,12 +59,8 @@
 #include "Utils/utils.h"
 #include "usb_device.h"
 
-#include "interface_nrf24.h"
 #include "samsung_ir.h"
 #include "samsung_ir_cmd.h"
-
-uint8_t netAddress[] = {0x03, 0x44, 0x55};
-#define payload_length 16
 
 /* Private variables ---------------------------------------------------------*/
 RTC_HandleTypeDef hrtc;
@@ -86,160 +82,6 @@ static void MX_TIM4_Init(void);
 }
 
 /* Private function prototypes -----------------------------------------------*/
-typedef struct {
-	uint32_t timestamp;		//4
-	uint8_t inputs;			//1
-	uint8_t outputs;		//1
-	uint16_t voltages[4];	//8
-	uint16_t temperature;	//2
-}__attribute__((packed, aligned(4))) nodeData_s;
-
-void sampleAnalog(int &temperature, int &voltage0, int &voltage1)
-{
-	uint32_t adc0 = 0;
-	uint32_t adc1 = 0;
-	uint32_t adc2 = 0;
-	uint32_t adc3 = 0;
-
-	HAL_ADCEx_Calibration_Start(&hadc1);
-
-	for (int k = 0; k < 16; ++k)
-	{
-		HAL_ADC_Start(&hadc1);
-		if(HAL_ADC_PollForConversion(&hadc1, 1000) == HAL_OK)
-		{
-			adc0 += HAL_ADC_GetValue(&hadc1);
-			//printf("ADC: %d\n", adc);
-		}
-
-
-		HAL_ADC_Start(&hadc1);
-		if(HAL_ADC_PollForConversion(&hadc1, 1000) == HAL_OK)
-		{
-			adc1 = HAL_ADC_GetValue(&hadc1);
-			//printf("ADC: %d\n", adc);
-		}
-
-		HAL_ADC_Start(&hadc1);
-		if(HAL_ADC_PollForConversion(&hadc1, 1000) == HAL_OK)
-		{
-			adc2 += HAL_ADC_GetValue(&hadc1);
-			//printf("ADC: %d\n", adc);
-		}
-
-		HAL_ADC_Start(&hadc1);
-		if(HAL_ADC_PollForConversion(&hadc1, 1000) == HAL_OK)
-		{
-			adc3 += HAL_ADC_GetValue(&hadc1);
-			//printf("ADC: %d\n", adc);
-		}
-	}
-
-	adc0 <<= 4;
-	adc1 <<= 4;
-	adc2 <<= 4;
-	adc3 <<= 4;
-
-	//this amount of steps measure 1.2V
-	uint32_t step = 1200000000 / adc0;
-	//printf("ADC Step %d\n", (int)step);
-
-	int voltage = adc1 * step;
-	//printf(" *	%d\n", (int)voltage);
-	voltage = 1.43e9 - voltage;
-	//printf(" -	%d\n", voltage);
-	voltage /= 4.3e3;
-	//printf(" /	%d\n", voltage);
-	temperature = 25000.0 + voltage;
-
-	//measure raw voltage
-	step /= 1000;
-	voltage0 = adc2 * step;
-	voltage1 = adc3 * step;
-
-	HAL_ADC_Stop(&hadc1);
-}
-
-void sampleUPS(int &temperature, int &voltage, int &current)
-{
-	int v0, v1;
-	sampleAnalog(temperature, v0, v1);
-
-	voltage = (v0 / 1000 + 160) * 4.3;
-	current = ((float)v1 * 0.005728412) - 13703.0;//	((2340800 - v1) / -200) - 240 ;
-}
-
-void report(uint8_t *address)
-{
-	//HAL_Delay(500);
-	int temperature, volt, amp;
-	sampleUPS(temperature, volt, amp);
-	nodeData_s pay;
-	memset(&pay, 0, 16);
-	pay.timestamp = HAL_GetTick();
-	pay.temperature = temperature;
-
-	pay.voltages[0] = volt;
-	pay.voltages[1] = (32768 + amp);
-	int result = -3;
-	int retries = 3;
-	do
-	{
-		result = InterfaceNRF24::get()->transmit(address, (uint8_t*)&pay, 16);
-		if(result < 0)
-		{
-			printf("  retry tx...\n");
-			HAL_Delay(1000);
-		}
-	}while((result < 0) && (retries--));
-
-	printf("TX result %d\n", result);
-}
-
-void reportNow()
-{
-	report(netAddress);
-}
-
-bool isDay()
-{
-	RTC_TimeTypeDef sTime;
-	HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-
-	printf("H: %d\n", sTime.Hours);
-
-	if((sTime.Hours > 17) || (5 > sTime.Hours))
-		return false;
-
-	return true;
-}
-
-bool NRFreceivedCB(int pipe, uint8_t *data, int len)
-{
-	printf("RCV PIPE# %d\n", (int)pipe);
-	printf(" PAYLOAD: %d\n", len);
-	diag_dump_buf(data, len);
-
-	nodeData_s down;
-	memcpy(&down, data, len);
-	int hour = (down.timestamp >> 8) & 0xFF;
-	int min = (down.timestamp) & 0xFF;
-	printf("Set Time %d:%d\n", hour, min);
-
-	RTC_TimeTypeDef sTime;
-	sTime.Hours = hour;
-	sTime.Minutes = min;
-	sTime.Seconds = 0;
-	HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
-
-	//Broadcast pipe
-	if(pipe == 1)
-	{
-		report(netAddress);
-	}
-
-	return false;
-}
 
 int main(void)
 {
@@ -252,14 +94,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_RTC_Init();
 
   HAL_Delay(1000);
 
-  MX_USB_DEVICE_Init();
-  sTerminalInterface_t usb = {
-		  MX_USB_DEVICE_ready,
-		  MX_USB_DEVICE_transmit
-    };
+//  MX_USB_DEVICE_Init();
+//  sTerminalInterface_t usb = {
+//		  MX_USB_DEVICE_ready,
+//		  MX_USB_DEVICE_transmit
+//    };
 
   terminal_serial_Init();
   sTerminalInterface_t serial = {
@@ -269,7 +112,6 @@ int main(void)
 
   sTerminalInterface_t *interfaces[] = {
 		  &serial,
-		  &usb,
 		  0
   };
 
@@ -280,29 +122,8 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM4_Init();
 
-//  //configure node address up to PIPE5
-//  int nodeAddr = 0;
-//  if(HAL_GPIO_ReadPin(NRF_ADDR0_GPIO_Port, NRF_ADDR0_Pin) == GPIO_PIN_RESET)
-//	  {
-//	  printf("ADDR0: L\n");
-//	  nodeAddr |= 0x01;
-//	  }
-//
-//  if(HAL_GPIO_ReadPin(NRF_ADDR1_GPIO_Port, NRF_ADDR1_Pin) == GPIO_PIN_RESET)
-//	  {
-//	  printf("ADDR1: L\n");
-//	  nodeAddr |= 0x02;
-//	  }
 
-  InterfaceNRF24::init(&hspi1, netAddress, 3);
-  InterfaceNRF24::get()->setRXcb(NRFreceivedCB);
-
-  printf("Bluepills @ %dHz\n", (int)HAL_RCC_GetSysClockFreq());
-  printf(" - APB2 %dHz\n", (int)HAL_RCC_GetPCLK1Freq());
-  printf(" - APB1 %dHz\n", (int)HAL_RCC_GetPCLK2Freq());
-  MX_RTC_Init();
-
-
+  samsung_ir_init(&htim2, TIM_CHANNEL_1, &htim4, TIM_CHANNEL_4);
 
   /* Infinite loop */
   while (1)
@@ -310,25 +131,25 @@ int main(void)
 	  terminal_run();
 //	  InterfaceNRF24::get()->run();
 
-      HAL_Delay(5000);
-      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-
-      static uint8_t flag = 0;
-      switch(flag)
-      {
-      default:
-      case 0:
-    	  samsung_ir_setFanLow();
-    	  break;
-      case 1:
-    	  samsung_ir_setFanMed();
-    	  break;
-      case 2:
-    	  samsung_ir_setFanHigh();
-    	  flag = 255;
-    	  break;
-      }
-      flag++;
+//      HAL_Delay(5000);
+//      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+//
+//      static uint8_t flag = 0;
+//      switch(flag)
+//      {
+//      default:
+//      case 0:
+//    	  samsung_ir_setFanLow();
+//    	  break;
+//      case 1:
+//    	  samsung_ir_setFanMed();
+//    	  break;
+//      case 2:
+//    	  samsung_ir_setFanHigh();
+//    	  flag = 255;
+//    	  break;
+//      }
+//      flag++;
   }
 
 }
@@ -401,7 +222,7 @@ void SystemClock_Config(void)
 }
 
 /* RTC init function */
-static void MX_RTC_Init(void)
+void MX_RTC_Init(void)
 {
   RTC_TimeTypeDef sTime;
   RTC_DateTypeDef sDate;
@@ -666,11 +487,15 @@ static void MX_TIM2_Init(void)
 	}
 
 
+	GPIO_InitTypeDef GPIO_InitStruct;
+	GPIO_InitStruct.Pin = IR_CCO_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+	HAL_GPIO_Init(IR_CCO_GPIO_Port, &GPIO_InitStruct);
+
 	HAL_TIM_Base_Start(&htim2);
-	samsung_ir_init(&htim2, TIM_CHANNEL_1);
-
 	printf("TIM2 Init\n");
-
 }
 
 /* TIM4 init function
@@ -735,7 +560,8 @@ static void MX_TIM4_Init(void)
 
 	sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
 	sConfigOC.Pulse = 0;
-	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+	sConfigOC.OCPolarity = TIM_OCPOLARITY_LOW;
+	sConfigOC.OCIdleState = TIM_OCIDLESTATE_SET;
 	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 	if (HAL_TIM_OC_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
 	{
@@ -743,18 +569,18 @@ static void MX_TIM4_Init(void)
 	}
 
 
-	///setup output pin
-	GPIO_InitTypeDef GPIO_InitStruct;
-	GPIO_InitStruct.Pin = IR_CCO_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	HAL_GPIO_Init(IR_CCO_GPIO_Port, &GPIO_InitStruct);
-	HAL_GPIO_WritePin(IR_CCO_GPIO_Port, IR_CCO_Pin, GPIO_PIN_RESET);
+//	///setup output pin
+//	GPIO_InitTypeDef GPIO_InitStruct;
+//	GPIO_InitStruct.Pin = IR_CCO_Pin;
+//	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+//	GPIO_InitStruct.Pull = GPIO_NOPULL;
+//	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+//	HAL_GPIO_Init(IR_CCO_GPIO_Port, &GPIO_InitStruct);
+//	HAL_GPIO_WritePin(IR_CCO_GPIO_Port, IR_CCO_Pin, GPIO_PIN_SET);
 
 
 	HAL_TIM_Base_Start(&htim4);
-	HAL_TIM_OC_Start(&htim4, TIM_CHANNEL_4);
+
 
 	printf("TIM4 Init\n");
 
@@ -787,40 +613,34 @@ const char *getDayName(int week_day)
  extern "C" {
 #endif
 
-void nrf(uint8_t argc, char **argv)
+void ir_fan_debug(uint8_t argc, char **argv)
 {
-	if(InterfaceNRF24::get())
+	if(argc > 1)
 	{
-		uint8_t address[5];
-		memcpy(address, netAddress, 5);
-
-		if(argc > 1)
-		{
-			address[0] = strtoul(argv[1], 0, 16);
-		}
-
-		report(address);
-
+		int level = atoi(argv[1]);
+		printf("Setting fan level: %d\n", level);
+		samsung_ir_setFan(level);
 	}
+	else
+		samsung_ir_setFan(0);
 }
 
-void adc(uint8_t argc, char **argv)
+void ir_ac_debug(uint8_t argc, char **argv)
 {
-//	int temperature, voltage0, voltage1;
-//	sampleAnalog(temperature, voltage0, voltage1);
-//
-//
-//	printf("temp: %d\n", temperature);
-//	printf("voltage0: %d\n", voltage0);
-//	printf("voltage1: %d\n", voltage1);
-
-	int temperature, amp, volt;
-	sampleUPS(temperature, volt, amp);
-	printf("temp: %d\n", temperature);
-	printf("volt: %d\n", volt);
-	printf("amp: %d\n", amp);
+	if(argc > 1)
+	{
+		int temp = atoi(argv[1]);
+		printf("Setting AC: %d\n", temp);
+		samsung_ir_setAC(temp);
+	}
+	else
+		samsung_ir_setAC(0);
 }
 
+void ir_off_debug(uint8_t argc, char **argv)
+{
+	samsung_ir_setAC(0);
+}
 
 void rtc_debug(uint8_t argc, char **argv)
 {
@@ -839,6 +659,8 @@ void rtc_debug(uint8_t argc, char **argv)
 		sTime.Minutes = atoi(argv[5]);
 		sTime.Seconds = 0;
 
+		RCC->APB1ENR |= (RCC_APB1ENR_BKPEN | RCC_APB1ENR_PWREN);
+
 		HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 		HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
 	}
@@ -848,7 +670,7 @@ void rtc_debug(uint8_t argc, char **argv)
 	HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
 
 	printf("RTC date: %s %d\n", getDayName(sDate.WeekDay), (int)HAL_RTC_SecondsSinceEpoch(sDate, sTime));
-	printf(" - %04d-%02d-%02d ", 2000 +sDate.Year, sDate.Month, sDate.Date);
+	printf(" - %04d-%02d-%02d ", 2000 + sDate.Year, sDate.Month, sDate.Date);
 	printf("%02d:%02d:%02d\n", sTime.Hours, sTime.Minutes, sTime.Seconds);
 }
 
