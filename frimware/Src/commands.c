@@ -19,6 +19,10 @@ void ir_off_debug(uint8_t argc, char **argv);
 const sTermEntry_t offEntry =
 { "o", "Switch AC off", ir_off_debug };
 
+void button_debug(uint8_t argc, char **argv);
+const sTermEntry_t buttonEntry =
+{ "i", "Sample inputs", button_debug };
+
 const sTermEntry_t *cli_entries[] =
 {
       &hEntry,
@@ -29,5 +33,6 @@ const sTermEntry_t *cli_entries[] =
 	  &fanEntry,
 	  &offEntry,
 	  &acEntry,
+	  &buttonEntry,
       0
 };

@@ -83,6 +83,55 @@ static void MX_TIM4_Init(void);
 
 /* Private function prototypes -----------------------------------------------*/
 
+uint8_t sample_button()
+{
+	uint8_t button = 0;
+	GPIO_PinState input = HAL_GPIO_ReadPin(BTN1_GPIO_Port, BTN1_Pin);
+	if(input == GPIO_PIN_SET)
+		button |= 0x01;
+
+	input = HAL_GPIO_ReadPin(BTN2_GPIO_Port, BTN2_Pin);
+	if(input == GPIO_PIN_RESET)
+		button |= 0x02;
+
+	input = HAL_GPIO_ReadPin(BTN3_GPIO_Port, BTN3_Pin);
+	if(input == GPIO_PIN_SET)
+		button |= 0x04;
+
+	return button;
+}
+
+uint8_t prev_button = 0x07;
+void button_run()
+{
+	uint8_t curr_button = sample_button();
+	if(prev_button != curr_button)
+	{
+		prev_button = curr_button;
+
+		switch(curr_button)
+		{
+		case 0x06:
+			printf("Power AC ON\n");
+			samsung_ir_setAC(25);
+			HAL_Delay(200);
+			break;
+		case 0x05:
+			printf("Power FAN ON\n");
+			samsung_ir_setFan(1);
+			HAL_Delay(200);
+			break;
+		case 0x03:
+			printf("Power OFF\n");
+			samsung_ir_setAC(0);
+			HAL_Delay(200);
+			break;
+		default:
+			break;
+		}
+	}
+}
+
 int main(void)
 {
   /* MCU Configuration----------------------------------------------------------*/
@@ -94,7 +143,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_RTC_Init();
+  //MX_RTC_Init();
 
   HAL_Delay(1000);
 
@@ -117,7 +166,7 @@ int main(void)
 
   terminal_init((sTerminalInterface_t **)&interfaces);
 
-  MX_SPI1_Init();
+  //MX_SPI1_Init();
   MX_ADC1_Init();
   MX_TIM2_Init();
   MX_TIM4_Init();
@@ -129,27 +178,10 @@ int main(void)
   while (1)
   {
 	  terminal_run();
-//	  InterfaceNRF24::get()->run();
+	  button_run();
 
-//      HAL_Delay(5000);
-//      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-//
-//      static uint8_t flag = 0;
-//      switch(flag)
-//      {
-//      default:
-//      case 0:
-//    	  samsung_ir_setFanLow();
-//    	  break;
-//      case 1:
-//    	  samsung_ir_setFanMed();
-//    	  break;
-//      case 2:
-//    	  samsung_ir_setFanHigh();
-//    	  flag = 255;
-//    	  break;
-//      }
-//      flag++;
+      HAL_Delay(100);
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   }
 
 }
@@ -306,28 +338,17 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
-	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(SPI1_CS_GPIO_Port, SPI1_CS_Pin, GPIO_PIN_SET);
-
-	/*Configure GPIO pin : SPI1_CS_Pin */
-	GPIO_InitStruct.Pin = SPI1_CS_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_PULLUP;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(SPI1_CS_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : NRF_CE_Pin */
-	GPIO_InitStruct.Pin = NRF_CE_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_PULLUP;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(NRF_CE_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : NRF_IRQ_Pin */
-	GPIO_InitStruct.Pin = NRF_IRQ_Pin;
+	GPIO_InitStruct.Pin = BTN1_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 	GPIO_InitStruct.Pull = GPIO_PULLUP;
-	HAL_GPIO_Init(NRF_IRQ_GPIO_Port, &GPIO_InitStruct);
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(BTN1_GPIO_Port, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = BTN2_Pin;
+	HAL_GPIO_Init(BTN2_GPIO_Port, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = BTN3_Pin;
+	HAL_GPIO_Init(BTN3_GPIO_Port, &GPIO_InitStruct);
 
 	/*Configure GPIO pin : ADC12_IN0 */
 	GPIO_InitStruct.Pin = GPIO_PIN_0;
@@ -612,6 +633,13 @@ const char *getDayName(int week_day)
 #ifdef __cplusplus
  extern "C" {
 #endif
+
+void button_debug(uint8_t argc, char **argv)
+{
+	uint8_t button = sample_button();
+	printf("button: %02X\n", button);
+
+}
 
 void ir_fan_debug(uint8_t argc, char **argv)
 {
